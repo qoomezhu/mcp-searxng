@@ -1,178 +1,72 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { SearXNGWeb } from "./types.js";
-import { createProxyAgent } from "./proxy.js";
-import { logMessage } from "./logging.js";
-import {
-  createConfigurationError,
-  createNetworkError,
-  createServerError,
-  createJSONError,
-  createDataError,
-  createNoResultsMessage,
-  type ErrorContext
-} from "./error-handler.js";
+import { LogLevel, log } from "./logging.js";
 
-export async function performWebSearch(
-  server: Server,
-  query: string,
-  pageno: number = 1,
-  time_range?: string,
-  language: string = "all",
-  safesearch?: string
-) {
-  const startTime = Date.now();
-  
-  // Build detailed log message with all parameters
-  const searchParams = [
-    `page ${pageno}`,
-    `lang: ${language}`,
-    time_range ? `time: ${time_range}` : null,
-    safesearch ? `safesearch: ${safesearch}` : null
-  ].filter(Boolean).join(", ");
-  
-  logMessage(server, "info", `Starting web search: "${query}" (${searchParams})`);
-  
-  const searxngUrl = process.env.SEARXNG_URL;
+export interface SearXNGResult {
+  url: string;
+  title: string;
+  content?: string;
+  publishedDate?: string;
+  img_src?: string;
+  engine: string;
+  score: number;
+  category: string;
+}
 
-  if (!searxngUrl) {
-    logMessage(server, "error", "SEARXNG_URL not configured");
-    throw createConfigurationError(
-      "SEARXNG_URL not set. Set it to your SearXNG instance (e.g., http://localhost:8080 or https://search.example.com)"
-    );
-  }
+interface SearXNGWeb {
+  results: SearXNGResult[];
+}
 
-  // Validate that searxngUrl is a valid URL
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(searxngUrl);
-  } catch (error) {
-    throw createConfigurationError(
-      `Invalid SEARXNG_URL format: ${searxngUrl}. Use format: http://localhost:8080`
-    );
-  }
+export interface SearchParams {
+  query: string;
+  language?: string;
+  time_range?: string;
+  safesearch?: string;
+  pageno?: number;
+}
 
-  const url = new URL('/search', parsedUrl);
+function createJSONError(responseText: string, context: { url: string }): Error {
+  const preview = responseText.length > 200 
+    ? responseText.substring(0, 200) + '...' 
+    : responseText;
+  return new Error(
+    `Failed to parse JSON response from SearXNG.\n` +
+    `URL: ${context.url}\n` +
+    `Response preview: ${preview}`
+  );
+}
 
-  url.searchParams.set("q", query);
+export async function searxngWebSearch(
+  searxngUrl: string,
+  params: SearchParams
+): Promise<SearXNGResult[]> {
+  const url = new URL("/search", searxngUrl);
+  url.searchParams.set("q", params.query);
   url.searchParams.set("format", "json");
-  url.searchParams.set("pageno", pageno.toString());
 
-  if (
-    time_range !== undefined &&
-    ["day", "month", "year"].includes(time_range)
-  ) {
-    url.searchParams.set("time_range", time_range);
-  }
+  if (params.language) url.searchParams.set("language", params.language);
+  if (params.time_range) url.searchParams.set("time_range", params.time_range);
+  if (params.safesearch) url.searchParams.set("safesearch", params.safesearch);
+  if (params.pageno) url.searchParams.set("pageno", params.pageno.toString());
 
-  if (language && language !== "all") {
-    url.searchParams.set("language", language);
-  }
+  log(LogLevel.INFO, `🔍 Searching: ${params.query}`);
 
-  if (safesearch !== undefined && ["0", "1", "2"].includes(safesearch)) {
-    url.searchParams.set("safesearch", safesearch);
-  }
-
-  // Prepare request options with headers
-  const requestOptions: RequestInit = {
-    method: "GET"
-  };
-
-  // Add proxy dispatcher if proxy is configured
-  // Node.js fetch uses 'dispatcher' option for proxy, not 'agent'
-  const proxyAgent = createProxyAgent(url.toString());
-  if (proxyAgent) {
-    (requestOptions as any).dispatcher = proxyAgent;
-  }
-
-  // Add basic authentication if credentials are provided
-  const username = process.env.AUTH_USERNAME;
-  const password = process.env.AUTH_PASSWORD;
-
-  if (username && password) {
-    const base64Auth = Buffer.from(`${username}:${password}`).toString('base64');
-    requestOptions.headers = {
-      ...requestOptions.headers,
-      'Authorization': `Basic ${base64Auth}`
-    };
-  }
-
-  // Add User-Agent header if configured
-  const userAgent = process.env.USER_AGENT;
-  if (userAgent) {
-    requestOptions.headers = {
-      ...requestOptions.headers,
-      'User-Agent': userAgent
-    };
-  }
-
-  // Fetch with enhanced error handling
-  let response: Response;
-  try {
-    logMessage(server, "info", `Making request to: ${url.toString()}`);
-    response = await fetch(url.toString(), requestOptions);
-  } catch (error: any) {
-    logMessage(server, "error", `Network error during search request: ${error.message}`, { query, url: url.toString() });
-    const context: ErrorContext = {
-      url: url.toString(),
-      searxngUrl,
-      proxyAgent: !!proxyAgent,
-      username
-    };
-    throw createNetworkError(error, context);
-  }
+  const response = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+  });
 
   if (!response.ok) {
-    let responseBody: string;
-    try {
-      responseBody = await response.text();
-    } catch {
-      responseBody = '[Could not read response body]';
-    }
-
-    const context: ErrorContext = {
-      url: url.toString(),
-      searxngUrl
-    };
-    throw createServerError(response.status, response.statusText, responseBody, context);
+    throw new Error(`SearXNG search failed: \({response.status} \){response.statusText}`);
   }
 
-  // Parse JSON response
+  // ✅ 修复：先读取文本，再解析 JSON
+  const responseText = await response.text();
   let data: SearXNGWeb;
   try {
-    data = (await response.json()) as SearXNGWeb;
-  } catch (error: any) {
-    let responseText: string;
-    try {
-      responseText = await response.text();
-    } catch {
-      responseText = '[Could not read response text]';
-    }
-
-    const context: ErrorContext = { url: url.toString() };
-    throw createJSONError(responseText, context);
+    data = JSON.parse(responseText) as SearXNGWeb;
+  } catch {
+    throw createJSONError(responseText, { url: url.toString() });
   }
 
-  if (!data.results) {
-    const context: ErrorContext = { url: url.toString(), query };
-    throw createDataError(data, context);
-  }
+  log(LogLevel.INFO, `📊 Found ${data.results?.length || 0} results`);
 
-  const results = data.results.map((result) => ({
-    title: result.title || "",
-    content: result.content || "",
-    url: result.url || "",
-    score: result.score || 0,
-  }));
-
-  if (results.length === 0) {
-    logMessage(server, "info", `No results found for query: "${query}"`);
-    return createNoResultsMessage(query);
-  }
-
-  const duration = Date.now() - startTime;
-  logMessage(server, "info", `Search completed: "${query}" (${searchParams}) - ${results.length} results in ${duration}ms`);
-
-  return results
-    .map((r) => `Title: ${r.title}\nDescription: ${r.content}\nURL: ${r.url}\nRelevance Score: ${r.score.toFixed(3)}`)
-    .join("\n\n");
+  return data.results || [];
 }
