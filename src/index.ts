@@ -77,6 +77,7 @@ export function isWebUrlReadArgs(args: unknown): args is {
 }
 
 // Server implementation
+// MCP 2025-11-25: Tools capability only declares listChanged, not individual tools
 const server = new Server(
   {
     name: "ihor-sokoliuk/mcp-searxng",
@@ -87,14 +88,7 @@ const server = new Server(
       logging: {},
       resources: {},
       tools: {
-        searxng_web_search: {
-          description: WEB_SEARCH_TOOL.description,
-          schema: WEB_SEARCH_TOOL.inputSchema,
-        },
-        web_url_read: {
-          description: READ_URL_TOOL.description,
-          schema: READ_URL_TOOL.inputSchema,
-        },
+        listChanged: true,  // MCP 2025-11-25: Only declare listChanged capability
       },
       prompts: {}, // MCP 2025-11-25: Prompts capability
     },
