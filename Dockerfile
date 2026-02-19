@@ -2,13 +2,17 @@ FROM node:lts-alpine AS builder
 
 WORKDIR /app
 
-COPY ./ /app
+COPY package*.json ./
 
-RUN --mount=type=cache,target=/root/.npm npm run bootstrap
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+COPY . .
+
+RUN npm run build
 
 FROM node:lts-alpine AS release
 
-RUN apk update && apk upgrade
+RUN apk update && apk upgrade && apk add --no-cache dumb-init
 
 WORKDIR /app
 
@@ -20,4 +24,5 @@ ENV NODE_ENV=production
 
 RUN npm ci --ignore-scripts --omit-dev
 
-ENTRYPOINT ["node", "dist/index.js"]
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--", "node", "dist/index.js"]

@@ -8,6 +8,8 @@ import {
   SetLevelRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   LoggingLevel,
 } from "@modelcontextprotocol/sdk/types.js";
 
@@ -19,6 +21,7 @@ import { fetchAndConvertToMarkdown } from "./url-reader.js";
 import { createConfigResource, createHelpResource } from "./resources.js";
 import { createHttpServer } from "./http-server.js";
 import { validateEnvironment as validateEnv } from "./error-handler.js";
+import { SEARCH_PROMPTS, getPromptTemplate, validatePromptArgs } from "./prompts.js";
 
 // Use a static version string that will be updated by the version script
 const packageVersion = "0.9.0";
@@ -93,6 +96,7 @@ const server = new Server(
           schema: READ_URL_TOOL.inputSchema,
         },
       },
+      prompts: {}, // MCP 2025-11-25: Prompts capability
     },
   }
 );
@@ -232,6 +236,39 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   }
 });
 
+// List prompts handler (MCP 2025-11-25 specification)
+server.setRequestHandler(ListPromptsRequestSchema, async () => {
+  logMessage(server, "debug", "Handling list_prompts request");
+  return {
+    prompts: Object.values(SEARCH_PROMPTS),
+  };
+});
+
+// Get prompt handler (MCP 2025-11-25 specification)
+server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+  logMessage(server, "debug", `Handling get_prompt request: ${name}`);
+
+  // Validate arguments
+  const validation = validatePromptArgs(name, args);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
+  const template = getPromptTemplate(name, args || {});
+  return {
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: template,
+        },
+      },
+    ],
+  };
+});
+
 // Main function
 async function main() {
   // Environment validation
@@ -307,4 +344,3 @@ main().catch((error) => {
   console.error("Failed to start server:", error);
   process.exit(1);
 });
-

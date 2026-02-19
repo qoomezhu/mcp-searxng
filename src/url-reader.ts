@@ -23,6 +23,51 @@ interface PaginationOptions {
   readHeadings?: boolean;
 }
 
+/**
+ * URL Security Validation (SSRF Prevention)
+ * MCP 2025-11-25 Security Best Practices
+ */
+function validateUrl(urlString: string): { valid: boolean; error?: string } {
+  try {
+    const url = new URL(urlString);
+
+    // Only allow HTTP and HTTPS protocols
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return {
+        valid: false,
+        error: "Only HTTP and HTTPS URLs are supported",
+      };
+    }
+
+    // Block internal/private addresses to prevent SSRF attacks
+    const hostname = url.hostname.toLowerCase();
+    const blockedPatterns = [
+      /^localhost$/i,
+      /^127\./,
+      /^10\./,
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+      /^192\.168\./,
+      /^::1$/,
+      /^fc00:/i,
+      /^fe80:/i,
+      /^0\.0\.0\.0$/,
+    ];
+
+    for (const pattern of blockedPatterns) {
+      if (pattern.test(hostname)) {
+        return {
+          valid: false,
+          error: "Access to internal addresses is not allowed",
+        };
+      }
+    }
+
+    return { valid: true };
+  } catch {
+    return { valid: false, error: "Invalid URL format" };
+  }
+}
+
 function applyCharacterPagination(content: string, startChar: number = 0, maxLength?: number): string {
   if (startChar >= content.length) {
     return "";
@@ -149,6 +194,13 @@ export async function fetchAndConvertToMarkdown(
 ) {
   const startTime = Date.now();
   logMessage(server, "info", `Fetching URL: ${url}`);
+
+  // Security: Validate URL format and block internal addresses
+  const urlValidation = validateUrl(url);
+  if (!urlValidation.valid) {
+    logMessage(server, "error", `URL validation failed: ${urlValidation.error}`);
+    throw createURLFormatError(`${url} - ${urlValidation.error}`);
+  }
 
   // Check cache first
   const cachedEntry = urlCache.get(url);

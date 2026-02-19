@@ -24,6 +24,9 @@ export function isSearXNGWebSearchArgs(args: unknown): args is {
   );
 }
 
+/**
+ * Web Search Tool with icon metadata (MCP 2025-11-25 specification)
+ */
 export const WEB_SEARCH_TOOL: Tool = {
   name: "searxng_web_search",
   description:
@@ -69,6 +72,9 @@ export const WEB_SEARCH_TOOL: Tool = {
   },
 };
 
+/**
+ * URL Reader Tool with icon metadata (MCP 2025-11-25 specification)
+ */
 export const READ_URL_TOOL: Tool = {
   name: "web_url_read",
   description:
