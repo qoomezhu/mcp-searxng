@@ -3,11 +3,6 @@ bin/
 *.test
 *.out
 
-# Node legacy
-node_modules/
-dist/
-build/
-
 # IDE / OS
 .idea/
 .vscode/
