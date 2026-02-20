@@ -5,12 +5,10 @@ WORKDIR /src
 
 RUN apk add --no-cache ca-certificates tzdata
 
-COPY go.mod ./
-RUN go mod download
-
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN go mod tidy && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -trimpath -ldflags='-s -w' -o /out/mcp-searxng ./
 
 # Runtime stage
