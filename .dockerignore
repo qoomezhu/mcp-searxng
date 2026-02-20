@@ -13,9 +13,5 @@ bin/
 *.log
 .DS_Store
 
-# Legacy Node
-node_modules/
-dist/
-
 # Docker files
 .dockerignore

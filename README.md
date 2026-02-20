@@ -1,16 +1,18 @@
-# mcp-searxng (Go Rewrite)
+# mcp-searxng (Pure Go)
 
-基于 **Go** 重写的 SearXNG MCP 服务端。
+纯 Go 版本的 SearXNG MCP 服务器（远程部署版）。
 
-## 目标
+## 特性
 
-- ✅ 只支持 **Streamable HTTP**（远程部署友好）
-- ✅ 兼容浏览器/Studio 场景（含 CORS）
-- ✅ 保留核心工具：
+- ✅ 仅支持 **Streamable HTTP**（不提供 stdio / Node 运行方式）
+- ✅ 工具：
   - `searxng_web_search`
   - `web_url_read`
-
-> 不再提供 stdio / legacy SSE 传输。
+- ✅ URL 读取缓存 + SSRF 防护
+- ✅ Studio / Web / Android LLM 客户端兼容优化：
+  - 自动兼容 `Accept` 头（补齐 `application/json, text/event-stream`）
+  - `JSONResponse` 优先（减少移动端 SSE 依赖）
+  - CORS 预检与 MCP 头暴露
 
 ---
 
@@ -18,32 +20,34 @@
 
 ### 必填
 
-- `SEARXNG_URL`：你的 SearXNG 实例地址（如 `https://search.example.com`）
+- `SEARXNG_URL`：你的 SearXNG 实例地址
 
 ### 可选
 
-- `MCP_HTTP_PORT`：HTTP 监听端口（默认 `8080`）
+- `MCP_HTTP_PORT`：监听端口（默认 `8080`）
 - `MCP_HTTP_PATH`：MCP 路径（默认 `/mcp`）
 - `AUTH_USERNAME` / `AUTH_PASSWORD`：SearXNG Basic Auth
-- `USER_AGENT`：请求头 User-Agent
-- `URL_CACHE_TTL_SECONDS`：URL 读取缓存秒数（默认 `60`）
+- `USER_AGENT`：自定义 User-Agent
+- `URL_CACHE_TTL_SECONDS`：URL 缓存 TTL（默认 `60`）
 - `URL_FETCH_TIMEOUT_MS`：URL 抓取超时（默认 `10000`）
 - `SEARCH_TIMEOUT_MS`：搜索超时（默认 `15000`）
-- `READ_MAX_BYTES`：读取网页最大字节数（默认 `5242880`）
-- `ALLOW_PRIVATE_ADDRESS`：`true` 时允许读取内网 URL（默认 `false`）
+- `READ_MAX_BYTES`：读取网页最大字节（默认 `5242880`）
+- `ALLOW_PRIVATE_ADDRESS`：允许读取内网地址（默认 `false`）
+- `MCP_SESSION_TIMEOUT_SECONDS`：会话超时（默认 `1800`）
+- `MCP_ANDROID_COMPAT`：移动端兼容（默认 `true`）
 
 ---
 
-## 本地运行
+## 运行
 
 ```bash
 go mod tidy
 go run .
 ```
 
-启动后：
+默认端点：
 
-- MCP Endpoint: `http://localhost:8080/mcp`
+- MCP: `http://localhost:8080/mcp`
 - Health: `http://localhost:8080/health`
 
 ---
@@ -59,41 +63,10 @@ docker run --rm -p 8080:8080 \
 
 ---
 
-## 工具说明
+## Android LLM 客户端建议
 
-### 1) `searxng_web_search`
+如果客户端只走短连接 POST，不主动建立 SSE：
 
-输入：
-
-- `query` (string, required)
-- `pageno` (number, optional)
-- `time_range` (`day|month|year`, optional)
-- `language` (string, optional)
-- `safesearch` (`0|1|2`, optional)
-
-### 2) `web_url_read`
-
-输入：
-
-- `url` (string, required)
-- `startChar` (number, optional)
-- `maxLength` (number, optional)
-- `section` (string, optional)
-- `paragraphRange` (string, optional)
-- `readHeadings` (boolean, optional)
-
----
-
-## 安全策略
-
-默认启用 URL 安全限制：
-
-- 只允许 `http/https`
-- 拒绝 localhost/内网地址
-- DNS 解析后若命中私网 IP 也会拒绝
-
-如需关闭（不建议生产）可设置：
-
-```bash
-ALLOW_PRIVATE_ADDRESS=true
-```
+- 本服务已默认开启兼容模式（`MCP_ANDROID_COMPAT=true`）
+- 服务会自动补齐常见 MCP 请求头，降低 400 概率
+- 建议客户端仍尽量保留 `Mcp-Session-Id` 复用会话
