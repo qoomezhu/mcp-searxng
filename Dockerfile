@@ -1,31 +1,29 @@
-FROM node:lts-alpine AS builder
+# Build stage
+FROM golang:1.24-alpine AS builder
 
-WORKDIR /app
+WORKDIR /src
 
-# Copy package files and install dependencies
-COPY package*.json ./
+RUN apk add --no-cache ca-certificates tzdata
 
-RUN --mount=type=cache,target=/root/.npm npm install
+COPY go.mod ./
+RUN go mod download
 
 COPY . .
 
-RUN npm run build
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -trimpath -ldflags='-s -w' -o /out/mcp-searxng ./
 
-FROM node:lts-alpine AS release
+# Runtime stage
+FROM alpine:3.21
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk update && apk upgrade && apk add --no-cache dumb-init
+RUN apk add --no-cache ca-certificates tzdata dumb-init
 
-# Copy built artifacts and package files
-COPY --from=builder /app/dist /app/dist
-COPY --from=builder /app/package.json /app/package.json
+COPY --from=builder /out/mcp-searxng /app/mcp-searxng
 
-ENV NODE_ENV=production
+ENV MCP_HTTP_PORT=8080
 
-# Install production dependencies only
-RUN npm install --omit=dev --ignore-scripts
+EXPOSE 8080
 
-# Use dumb-init to handle signals properly
-ENTRYPOINT ["dumb-init", "--", "node", "dist/index.js"]
+ENTRYPOINT ["dumb-init", "--", "/app/mcp-searxng"]
