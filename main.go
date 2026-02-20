@@ -21,7 +21,7 @@ import (
 
 const (
 	serverName    = "qoomezhu/mcp-searxng-go"
-	serverVersion = "1.1.0"
+	serverVersion = "1.2.0"
 )
 
 type Config struct {
@@ -47,44 +47,78 @@ type Service struct {
 	cache    *URLCache
 }
 
-// --- SSE Workaround for Android Client ---
-type sseWorkaroundWriter struct {
+// --- SSE Anti-Sticking Middleware for Android MCP Clients ---
+// The Android Kotlin MCP SDK (Rikka Hub) always parses responses using SSE parser
+// (SSEKt$sseFlow). When the server sends multiple SSE events quickly, the client's
+// SSE parser may concatenate data from multiple events, causing JSON parsing errors
+// like "Expected EOF after parsing, but had { instead" (the }{  problem).
+//
+// This middleware wraps http.ResponseWriter to:
+// 1. Force flush after every write (prevent OS/proxy buffering)
+// 2. Add a small delay after complete SSE events (\n\n) to prevent TCP coalescing
+// 3. Set anti-buffering headers to prevent reverse proxy (Zeabur/Nginx/CF) buffering
+
+type sseAntiStickWriter struct {
 	http.ResponseWriter
+	headerWritten bool
 }
 
-func (w *sseWorkaroundWriter) Write(b []byte) (int, error) {
-	n, err := w.ResponseWriter.Write(b)
-	if err == nil {
-		if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
-			flusher.Flush()
-		}
-		// Only sleep if this looks like the end of an SSE message
-		if len(b) >= 2 && b[len(b)-1] == '\n' && b[len(b)-2] == '\n' {
-			time.Sleep(50 * time.Millisecond)
-		}
+func (w *sseAntiStickWriter) WriteHeader(statusCode int) {
+	if !w.headerWritten {
+		// Anti-buffering headers for reverse proxies (Nginx, CloudFlare, Zeabur)
+		w.ResponseWriter.Header().Set("X-Accel-Buffering", "no")
+		w.ResponseWriter.Header().Set("Cache-Control", "no-cache, no-store, no-transform")
+		w.ResponseWriter.Header().Set("Connection", "keep-alive")
+		w.headerWritten = true
 	}
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *sseAntiStickWriter) Write(b []byte) (int, error) {
+	if !w.headerWritten {
+		// Anti-buffering headers for reverse proxies
+		w.ResponseWriter.Header().Set("X-Accel-Buffering", "no")
+		w.ResponseWriter.Header().Set("Cache-Control", "no-cache, no-store, no-transform")
+		w.ResponseWriter.Header().Set("Connection", "keep-alive")
+		w.headerWritten = true
+	}
+
+	n, err := w.ResponseWriter.Write(b)
+	if err != nil {
+		return n, err
+	}
+
+	// Always flush immediately after write
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	// Detect end of SSE event (double newline) and add delay to prevent TCP coalescing
+	// This forces the Android client's SSE parser to process each event independently
+	if len(b) >= 2 && b[len(b)-1] == '\n' && b[len(b)-2] == '\n' {
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	return n, err
 }
 
-func (w *sseWorkaroundWriter) Flush() {
+func (w *sseAntiStickWriter) Flush() {
 	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
 }
 
-// Ensure sseWorkaroundWriter implements http.Flusher
-var _ http.Flusher = (*sseWorkaroundWriter)(nil)
+// Ensure sseAntiStickWriter implements http.Flusher
+var _ http.Flusher = (*sseAntiStickWriter)(nil)
 
-func withSSEWorkaround(next http.Handler) http.Handler {
+func withSSEAntiStick(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Apply to GET requests (SSE stream)
-		if r.Method == http.MethodGet {
-			next.ServeHTTP(&sseWorkaroundWriter{ResponseWriter: w}, r)
-			return
-		}
-		next.ServeHTTP(w, r)
+		// Apply to BOTH GET (SSE notification stream) and POST (tool call SSE responses)
+		// The Android client uses SSE parser for all MCP responses
+		next.ServeHTTP(&sseAntiStickWriter{ResponseWriter: w}, r)
 	})
 }
+
 // -----------------------------------------
 
 func main() {
@@ -99,18 +133,27 @@ func main() {
 	}
 
 	mcpServer := createMCPServer(svc)
+
+	// CRITICAL: Do NOT set JSONResponse: true
+	// The Android Kotlin MCP client (Rikka Hub) uses SSEKt$sseFlow to parse ALL
+	// responses. If we send application/json, the client still tries to parse it
+	// as SSE, causing data corruption and the }{ concatenation error.
+	// By using SSE mode (default), the server properly frames each JSON-RPC response
+	// as a separate SSE event with "data:" prefix and "\n\n" delimiter.
 	streamable := mcp.NewStreamableHTTPHandler(
 		func(_ *http.Request) *mcp.Server { return mcpServer },
 		&mcp.StreamableHTTPOptions{
 			SessionTimeout: cfg.SessionTimeout,
-			JSONResponse:   true,
+			// JSONResponse: false (default) — use SSE streaming for all responses
+			// This is critical for Android client compatibility
 		},
 	)
 
 	mcpHandler := http.Handler(streamable)
 	if cfg.AndroidCompat {
 		mcpHandler = withMobileClientCompatibility(mcpHandler)
-		mcpHandler = withSSEWorkaround(mcpHandler) // Add SSE workaround
+		mcpHandler = withSSEAntiStick(mcpHandler)
+		log.Printf("已启用 Android 兼容: SSE 模式 + 防粘包 + 防缓冲")
 	}
 	mcpHandler = withCORS(mcpHandler)
 
@@ -123,6 +166,7 @@ func main() {
 			"server":            serverName,
 			"version":           serverVersion,
 			"transport":         "streamable-http",
+			"responseMode":      "sse",
 			"endpoint":          cfg.MCPPath,
 			"androidCompatible": cfg.AndroidCompat,
 		})
@@ -133,6 +177,7 @@ func main() {
 			"name":                 serverName,
 			"version":              serverVersion,
 			"protocol":             "streamable-http",
+			"responseMode":         "sse",
 			"studioCompatible":     true,
 			"androidLLMCompatible": cfg.AndroidCompat,
 			"mcpEndpoint":          cfg.MCPPath,
@@ -153,10 +198,8 @@ func main() {
 	log.Printf("%s v%s 已启动", serverName, serverVersion)
 	log.Printf("监听地址: %s", cfg.ListenAddr)
 	log.Printf("MCP 端点: %s", cfg.MCPPath)
+	log.Printf("响应模式: SSE (Android 兼容)")
 	log.Printf("SearXNG: %s", cfg.SearxngURL)
-	if cfg.AndroidCompat {
-		log.Printf("已启用 Android LLM 兼容模式")
-	}
 
 	errCh := make(chan error, 1)
 	go func() {
