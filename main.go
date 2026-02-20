@@ -47,6 +47,46 @@ type Service struct {
 	cache    *URLCache
 }
 
+// --- SSE Workaround for Android Client ---
+type sseWorkaroundWriter struct {
+	http.ResponseWriter
+}
+
+func (w *sseWorkaroundWriter) Write(b []byte) (int, error) {
+	n, err := w.ResponseWriter.Write(b)
+	if err == nil {
+		if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		// Only sleep if this looks like the end of an SSE message
+		if len(b) >= 2 && b[len(b)-1] == '\n' && b[len(b)-2] == '\n' {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	return n, err
+}
+
+func (w *sseWorkaroundWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// Ensure sseWorkaroundWriter implements http.Flusher
+var _ http.Flusher = (*sseWorkaroundWriter)(nil)
+
+func withSSEWorkaround(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Apply to GET requests (SSE stream)
+		if r.Method == http.MethodGet {
+			next.ServeHTTP(&sseWorkaroundWriter{ResponseWriter: w}, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+// -----------------------------------------
+
 func main() {
 	cfg, err := loadConfig()
 	if err != nil {
@@ -70,6 +110,7 @@ func main() {
 	mcpHandler := http.Handler(streamable)
 	if cfg.AndroidCompat {
 		mcpHandler = withMobileClientCompatibility(mcpHandler)
+		mcpHandler = withSSEWorkaround(mcpHandler) // Add SSE workaround
 	}
 	mcpHandler = withCORS(mcpHandler)
 
