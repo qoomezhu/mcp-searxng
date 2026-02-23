@@ -236,11 +236,71 @@ func createMCPServer(svc *Service) *mcp.Server {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "searxng_web_search",
 		Description: "Use SearXNG for web search with optional page/time/language/safesearch filters.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{
+					"type":        "string",
+					"description": "搜索关键词",
+				},
+				"pageno": map[string]any{
+					"type":        "integer",
+					"description": "页码，从1开始",
+				},
+				"time_range": map[string]any{
+					"type":        "string",
+					"description": "时间范围: day/month/year",
+					"enum":        []string{"day", "month", "year"},
+				},
+				"language": map[string]any{
+					"type":        "string",
+					"description": "语言代码，默认 all",
+				},
+				"safesearch": map[string]any{
+					"type":        "integer",
+					"description": "安全搜索级别 0/1/2",
+					"enum":        []int{0, 1, 2},
+				},
+			},
+			"required":             []string{"query"},
+			"additionalProperties": false,
+		},
 	}, svc.handleSearchTool)
 
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "web_url_read",
 		Description: "Fetch URL content and convert HTML to markdown with heading/section/paragraph pagination options.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url": map[string]any{
+					"type":        "string",
+					"description": "要读取的 URL",
+				},
+				"startChar": map[string]any{
+					"type":        "integer",
+					"description": "起始字符位置",
+				},
+				"maxLength": map[string]any{
+					"type":        "integer",
+					"description": "最多返回字符数",
+				},
+				"section": map[string]any{
+					"type":        "string",
+					"description": "按标题提取分节",
+				},
+				"paragraphRange": map[string]any{
+					"type":        "string",
+					"description": "段落范围，如 1-5 / 3 / 10-",
+				},
+				"readHeadings": map[string]any{
+					"type":        "boolean",
+					"description": "仅返回标题列表",
+				},
+			},
+			"required":             []string{"url"},
+			"additionalProperties": false,
+		},
 	}, svc.handleReadTool)
 
 	return srv
