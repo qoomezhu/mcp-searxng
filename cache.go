@@ -35,10 +35,12 @@ func (c *URLCache) Get(key string) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	// Check TTL without deleting — let cleanupLoop handle removal.
+	// Deleting here after RLock→Lock upgrade races with concurrent Set():
+	// goroutine A finds expired entry, releases RLock;
+	// goroutine B calls Set() with fresh value;
+	// goroutine A acquires Lock and deletes B's fresh entry.
 	if time.Since(entry.time) > c.ttl {
-		c.mu.Lock()
-		delete(c.data, key)
-		c.mu.Unlock()
 		return "", false
 	}
 	return entry.markdown, true

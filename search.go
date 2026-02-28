@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -137,10 +136,4 @@ func (s *Service) performSearch(ctx context.Context, in SearchInput) (string, er
 	}
 
 	return b.String(), nil
-}
-
-func mustJoin(base *url.URL, p string) string {
-	copyURL := *base
-	copyURL.Path = strings.TrimRight(copyURL.Path, "/") + p
-	return copyURL.String()
 }
