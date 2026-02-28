@@ -7,8 +7,10 @@ RUN apk add --no-cache ca-certificates tzdata
 
 COPY . .
 
+ARG TARGETARCH
+
 RUN go mod tidy && \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
     go build -trimpath -ldflags='-s -w' -o /out/mcp-searxng ./
 
 # Runtime stage

@@ -13,6 +13,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// Pre-compiled regexps — avoid recompiling on every call (10-100x faster).
+var (
+	reParagraphRange = regexp.MustCompile(`^(\d+)(?:-(\d*))?$`)
+	reParagraphSplit = regexp.MustCompile(`\n\s*\n`)
+)
+
 type URLReadInput struct {
 	URL            string  `json:"url" jsonschema:"要读取的 URL"`
 	StartChar      *int    `json:"startChar,omitempty" jsonschema:"起始字符位置"`
@@ -214,7 +220,7 @@ func extractParagraphRange(markdown, paragraphRange string) (string, error) {
 		return "", fmt.Errorf("内容为空")
 	}
 
-	matches := regexp.MustCompile(`^(\d+)(?:-(\d*))?$`).FindStringSubmatch(paragraphRange)
+	matches := reParagraphRange.FindStringSubmatch(paragraphRange)
 	if len(matches) == 0 {
 		return "", fmt.Errorf("paragraphRange 格式非法: %s", paragraphRange)
 	}
@@ -225,7 +231,10 @@ func extractParagraphRange(markdown, paragraphRange string) (string, error) {
 		return "", fmt.Errorf("paragraphRange 起始位置越界")
 	}
 
-	if len(matches) < 3 {
+	// Distinguish "3" (single paragraph) from "3-" (paragraph 3 to end).
+	// The regex optional group (?:-(\d*))? produces matches[2]=="" for both
+	// cases, so we check whether the raw input contains "-".
+	if !strings.Contains(paragraphRange, "-") {
 		return paragraphs[startIndex], nil
 	}
 
@@ -245,7 +254,7 @@ func extractParagraphRange(markdown, paragraphRange string) (string, error) {
 }
 
 func splitParagraphs(markdown string) []string {
-	parts := regexp.MustCompile(`\n\s*\n`).Split(markdown, -1)
+	parts := reParagraphSplit.Split(markdown, -1)
 	out := make([]string, 0, len(parts))
 	for _, p := range parts {
 		trimmed := strings.TrimSpace(p)

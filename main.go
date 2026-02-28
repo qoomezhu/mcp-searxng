@@ -21,7 +21,7 @@ import (
 
 const (
 	serverName    = "qoomezhu/mcp-searxng-go"
-	serverVersion = "1.2.0"
+	serverVersion = "1.2.1"
 )
 
 type Config struct {
@@ -409,6 +409,8 @@ func getEnvBool(key string, fallback bool) bool {
 }
 
 func withCORS(next http.Handler) http.Handler {
+	// HTTP header names are case-insensitive (RFC 7230 §3.2),
+	// so only canonical forms are needed here.
 	allowHeaders := strings.Join([]string{
 		"Content-Type",
 		"Accept",
@@ -416,9 +418,6 @@ func withCORS(next http.Handler) http.Handler {
 		"Mcp-Session-Id",
 		"Mcp-Protocol-Version",
 		"Last-Event-ID",
-		"mcp-session-id",
-		"mcp-protocol-version",
-		"last-event-id",
 	}, ",")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
