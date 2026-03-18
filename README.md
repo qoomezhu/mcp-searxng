@@ -4,7 +4,7 @@
 
 ## 这个版本做了什么
 
-- 新增 `netlify/functions/mcp/mcp.go` 作为 Netlify 部署入口
+- 新增 `netlify/functions/mcp/` 作为 Netlify 部署入口
 - MCP 运行在 **stateless + JSONResponse** 模式，适合 Netlify Functions
 - 提供友好路由：`/mcp`、`/health`
 - 同时保留直连入口：`/.netlify/functions/mcp`
