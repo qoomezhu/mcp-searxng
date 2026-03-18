@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JohannesKaufmann/html-to-markdown/v2"
+	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -112,28 +112,28 @@ func buildHTTPHandler(svc *Service) http.Handler {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status":            "ok",
-			"server":            serverName,
-			"version":           serverVersion,
-			"transport":         "streamable-http",
-			"responseMode":      "json",
-			"stateless":         true,
-			"endpoint":          svc.cfg.MCPPath,
-			"functionEndpoint":  "/.netlify/functions/mcp",
+			"status":             "ok",
+			"server":             serverName,
+			"version":            serverVersion,
+			"transport":          "streamable-http",
+			"responseMode":       "json",
+			"stateless":          true,
+			"endpoint":           svc.cfg.MCPPath,
+			"functionEndpoint":   "/.netlify/functions/mcp",
 			"allowPrivateAddress": svc.cfg.AllowPrivateAddress,
 		})
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"name":              serverName,
-			"version":           serverVersion,
-			"protocol":          "streamable-http",
-			"responseMode":      "json",
-			"stateless":         true,
-			"mcpEndpoint":       svc.cfg.MCPPath,
-			"healthEndpoint":    "/health",
-			"functionEndpoint":  "/.netlify/functions/mcp",
+			"name":            serverName,
+			"version":         serverVersion,
+			"protocol":        "streamable-http",
+			"responseMode":    "json",
+			"stateless":       true,
+			"mcpEndpoint":     svc.cfg.MCPPath,
+			"healthEndpoint":  "/health",
+			"functionEndpoint": "/.netlify/functions/mcp",
 		})
 	})
 
@@ -367,7 +367,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start).String())
+		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start))
 	})
 }
 
@@ -994,7 +994,7 @@ type cacheEntry struct {
 type URLCache struct {
 	mu   sync.RWMutex
 	ttl  time.Duration
-	data map[string]cacheEntry
+	dat a map[string]cacheEntry
 }
 
 func NewURLCache(ttl time.Duration) *URLCache {
