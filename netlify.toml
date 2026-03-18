@@ -1,0 +1,17 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = "go test ./..."
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/mcp"
+  to = "/.netlify/functions/mcp"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/mcp"
+  status = 200

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mcp-searxng · Netlify 适配版</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 40px 20px;
+        line-height: 1.6;
+      }
+      code, pre { background: rgba(127,127,127,.12); padding: .15rem .35rem; border-radius: 6px; }
+      a { color: #3b82f6; }
+      .card { border: 1px solid rgba(127,127,127,.25); border-radius: 14px; padding: 20px; margin: 20px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>mcp-searxng · Netlify 适配版</h1>
+    <p>这个分支把原始的 Go MCP 服务器改造成了 Netlify Functions 版本，默认以 <strong>stateless + JSON response</strong> 模式运行。</p>
+
+    <div class="card">
+      <h2>可用端点</h2>
+      <ul>
+        <li><code>/mcp</code> → MCP 主入口</li>
+        <li><code>/health</code> → 健康检查</li>
+        <li><code>/.netlify/functions/mcp</code> → Netlify 函数直连入口</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>部署前需要配置的环境变量</h2>
+      <ul>
+        <li><code>SEARXNG_URL</code>：必填，SearXNG 实例地址</li>
+        <li><code>AUTH_USERNAME</code> / <code>AUTH_PASSWORD</code>：可选，SearXNG Basic Auth</li>
+        <li><code>USER_AGENT</code>：可选，自定义抓取 UA</li>
+        <li><code>ALLOW_PRIVATE_ADDRESS</code>：可选，默认 <code>false</code></li>
+      </ul>
+    </div>
+
+    <p>本地调试推荐使用 <code>netlify dev</code>。</p>
+  </body>
+</html>

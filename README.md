@@ -1,22 +1,16 @@
-# mcp-searxng (Pure Go)
+# mcp-searxng (Netlify 适配版)
 
-纯 Go 版本的 SearXNG MCP 服务器（远程部署版）。
+这个分支把原始的纯 Go MCP 服务器改成了 **Netlify Functions 适配版本**。
 
-## 特性
+## 这个版本做了什么
 
-- ✅ 仅支持 **Streamable HTTP**（不提供 stdio / Node 运行方式）
-- ✅ 工具：
-  - `searxng_web_search`
-  - `web_url_read`
-- ✅ URL 读取缓存 + SSRF 防护
-- ✅ Studio / Web / Android LLM 客户端兼容优化：
-  - 自动兼容 `Accept` 头（补齐 `application/json, text/event-stream`）
-  - `JSONResponse` 优先（减少移动端 SSE 依赖）
-  - CORS 预检与 MCP 头暴露
+- 新增 `netlify/functions/mcp/mcp.go` 作为 Netlify 部署入口
+- MCP 运行在 **stateless + JSONResponse** 模式，适合 Netlify Functions
+- 提供友好路由：`/mcp`、`/health`
+- 同时保留直连入口：`/.netlify/functions/mcp`
+- 增加 `public/index.html` 与重写规则，方便 Netlify 托管
 
----
-
-## 环境变量
+## 部署前需要设置的环境变量
 
 ### 必填
 
@@ -24,49 +18,44 @@
 
 ### 可选
 
-- `MCP_HTTP_PORT`：监听端口（默认 `8080`）
-- `MCP_HTTP_PATH`：MCP 路径（默认 `/mcp`）
 - `AUTH_USERNAME` / `AUTH_PASSWORD`：SearXNG Basic Auth
 - `USER_AGENT`：自定义 User-Agent
-- `URL_CACHE_TTL_SECONDS`：URL 缓存 TTL（默认 `60`）
-- `URL_FETCH_TIMEOUT_MS`：URL 抓取超时（默认 `10000`）
-- `SEARCH_TIMEOUT_MS`：搜索超时（默认 `15000`）
-- `READ_MAX_BYTES`：读取网页最大字节（默认 `5242880`）
-- `ALLOW_PRIVATE_ADDRESS`：允许读取内网地址（默认 `false`）
-- `MCP_SESSION_TIMEOUT_SECONDS`：会话超时（默认 `1800`）
-- `MCP_ANDROID_COMPAT`：移动端兼容（默认 `true`）
+- `URL_CACHE_TTL_SECONDS`：URL 缓存 TTL，默认 `60`
+- `URL_FETCH_TIMEOUT_MS`：URL 抓取超时，默认 `10000`
+- `SEARCH_TIMEOUT_MS`：搜索超时，默认 `15000`
+- `READ_MAX_BYTES`：读取网页最大字节，默认 `5242880`
+- `ALLOW_PRIVATE_ADDRESS`：允许读取内网地址，默认 `false`
+- `MCP_SESSION_TIMEOUT_SECONDS`：会话超时，默认 `60`
+- `MCP_HTTP_PATH`：MCP 路径，默认 `/mcp`
 
----
+## Netlify 部署步骤
 
-## 运行
+1. 把这个分支连接到 Netlify
+2. 在 Netlify 控制台里添加上面的环境变量
+3. 发布
 
-```bash
-go mod tidy
-go run .
-```
+部署完成后可用地址：
 
-默认端点：
+- `https://你的域名/mcp`
+- `https://你的域名/health`
+- `https://你的域名/.netlify/functions/mcp`
 
-- MCP: `http://localhost:8080/mcp`
-- Health: `http://localhost:8080/health`
-
----
-
-## Docker
+## 本地开发
 
 ```bash
-docker build -t mcp-searxng:go .
-docker run --rm -p 8080:8080 \
-  -e SEARXNG_URL=https://search.example.com \
-  mcp-searxng:go
+npx netlify dev
 ```
 
----
+本地访问：
 
-## Android LLM 客户端建议
+- `http://localhost:8888/mcp`
+- `http://localhost:8888/health`
 
-如果客户端只走短连接 POST，不主动建立 SSE：
+## 实现说明
 
-- 本服务已默认开启兼容模式（`MCP_ANDROID_COMPAT=true`）
-- 服务会自动补齐常见 MCP 请求头，降低 400 概率
-- 建议客户端仍尽量保留 `Mcp-Session-Id` 复用会话
+这个 Netlify 版本和原始 Docker/常驻进程版本相比，做了一个关键调整：
+
+- **不再依赖长连接 SSE 作为主要交互方式**
+- 改成 **无状态 MCP + JSON 响应**，更符合 Netlify Functions 的运行模型
+
+如果你想保留原始的 Docker 常驻进程方式，仓库根目录里的原始 Go 实现仍然可以作为参考。
